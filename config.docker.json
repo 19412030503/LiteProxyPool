@@ -1,0 +1,26 @@
+{
+  "socks_listen": "0.0.0.0:1080",
+  "http_listen": "0.0.0.0:18080",
+  "web_listen": "0.0.0.0:8088",
+  "refresh_every": "30m",
+  "dial_timeout": "15s",
+  "validation": {
+    "enabled": true,
+    "http_test_url": "http://example.com/",
+    "socks5_test_addr": "example.com:443",
+    "max_http": 500,
+    "max_socks5": 200,
+    "concurrency": 64
+  },
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
+      "type": "socks5"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+      "type": "http"
+    }
+  ],
+  "proxies": []
+}

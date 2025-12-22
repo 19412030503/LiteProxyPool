@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LiteProxy</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 24px; line-height: 1.45; }
+      h1 { margin: 0 0 8px; }
+      h2 { margin: 18px 0 10px; font-size: 16px; }
+      .muted { opacity: .75; }
+      .wrap { max-width: 1100px; margin: 0 auto; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+      .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+      .card { border: 1px solid rgba(127,127,127,.25); border-radius: 14px; padding: 14px; background: rgba(127,127,127,.06); }
+      .card h3 { margin: 0 0 10px; font-size: 14px; opacity: .85; letter-spacing: .2px; }
+      .kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; }
+      .kv div { min-width: 0; }
+      .kv .k { opacity: .75; }
+      .kv .v { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(127,127,127,.25); background: rgba(127,127,127,.08); }
+      .pill code { background: transparent; padding: 0; }
+      button { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(127,127,127,.35); background: transparent; cursor: pointer; }
+      button:hover { border-color: rgba(127,127,127,.75); }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      input, select { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(127,127,127,.35); background: transparent; min-width: 260px; }
+      code { padding: 2px 6px; border-radius: 8px; background: rgba(127,127,127,.15); }
+      pre { padding: 12px; border-radius: 14px; background: rgba(127,127,127,.10); overflow: auto; margin: 0; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid rgba(127,127,127,.18); }
+      th { opacity: .75; font-weight: 600; }
+      .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      .right { margin-left: auto; }
+      .ok { color: #2a9d8f; }
+      .bad { color: #e76f51; }
+      .warn { color: #f4a261; }
+      .small { font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="row">
+        <div>
+          <h1>LiteProxy</h1>
+          <div class="muted small">公共代理池适配器：本地 SOCKS5 / HTTP 出口按类型分流。</div>
+        </div>
+        <div class="right row">
+          <span class="pill small">Web：<code id="webAddr">127.0.0.1:8088</code></span>
+          <span class="pill small">SOCKS5：<code id="socksAddr">127.0.0.1:1080</code></span>
+          <span class="pill small">HTTP：<code id="httpAddr">127.0.0.1:18080</code></span>
+        </div>
+      </div>
+
+      <h2>控制</h2>
+      <div class="card">
+        <div class="actions">
+          <button id="refresh">刷新代理池</button>
+          <button id="next-socks5">切换 SOCKS5 节点</button>
+          <button id="next-http">切换 HTTP 节点</button>
+          <span class="right muted small" id="refreshHint"></span>
+        </div>
+        <div style="height: 10px"></div>
+        <div class="actions">
+          <select id="checkType" aria-label="check type">
+            <option value="socks5">验证 SOCKS5（TCP）</option>
+            <option value="http">验证 HTTP（明文）</option>
+          </select>
+          <input id="checkTarget" placeholder="SOCKS5: example.com:443 / HTTP: http://example.com/" />
+          <button id="check">验证当前节点</button>
+          <span class="muted small">提示：HTTP 代理若不支持 CONNECT，HTTPS 会失败（协议限制）。</span>
+        </div>
+      </div>
+
+      <h2>状态</h2>
+      <div class="grid">
+        <div class="card" style="grid-column: span 6">
+          <h3>SOCKS5 上游池（供本地 SOCKS5 出口使用）</h3>
+          <div class="kv">
+            <div class="k">当前节点</div><div class="v" id="curSocks5">-</div>
+            <div class="k">索引</div><div class="v" id="idxSocks5">-</div>
+            <div class="k">可用数量</div><div class="v" id="sizeSocks5">-</div>
+          </div>
+        </div>
+        <div class="card" style="grid-column: span 6">
+          <h3>HTTP 上游池（供本地 HTTP 出口使用）</h3>
+          <div class="kv">
+            <div class="k">当前节点</div><div class="v" id="curHTTP">-</div>
+            <div class="k">索引</div><div class="v" id="idxHTTP">-</div>
+            <div class="k">可用数量</div><div class="v" id="sizeHTTP">-</div>
+          </div>
+        </div>
+        <div class="card" style="grid-column: span 12">
+          <h3>刷新状态</h3>
+          <div class="kv">
+            <div class="k">池总量</div><div class="v" id="sizeAll">-</div>
+            <div class="k">最近刷新</div><div class="v" id="lastRefresh">-</div>
+            <div class="k">最近错误</div><div class="v" id="lastErr">-</div>
+          </div>
+        </div>
+      </div>
+
+      <h2>快速测试</h2>
+      <div class="card">
+        <div class="row">
+          <button id="copyCurlSocks">复制 SOCKS5 curl</button>
+          <button id="copyCurlHTTP">复制 HTTP curl</button>
+          <span class="muted small" id="copyHint"></span>
+        </div>
+        <div style="height: 10px"></div>
+        <pre id="snippets"></pre>
+      </div>
+
+      <h2>代理列表</h2>
+      <div class="card">
+        <div class="actions">
+          <select id="poolType" aria-label="pool type">
+            <option value="">全部（前 200）</option>
+            <option value="socks5">SOCKS5（前 200）</option>
+            <option value="http">HTTP（前 200）</option>
+          </select>
+          <button id="loadPool">加载</button>
+          <span class="muted small" id="poolHint"></span>
+        </div>
+        <div style="height: 10px"></div>
+        <div style="overflow:auto; max-height: 420px">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 90px">类型</th>
+                <th>地址</th>
+                <th style="width: 120px">延迟(ms)</th>
+              </tr>
+            </thead>
+            <tbody id="poolBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <h2>输出</h2>
+      <pre id="out" style="min-height: 90px"></pre>
+    </div>
+
+    <script>
+      const outEl = document.getElementById("out");
+      const refreshHint = document.getElementById("refreshHint");
+      const poolHint = document.getElementById("poolHint");
+      const copyHint = document.getElementById("copyHint");
+
+      const socksAddrEl = document.getElementById("socksAddr");
+      const httpAddrEl = document.getElementById("httpAddr");
+      const webAddrEl = document.getElementById("webAddr");
+
+      const curSocks5El = document.getElementById("curSocks5");
+      const idxSocks5El = document.getElementById("idxSocks5");
+      const sizeSocks5El = document.getElementById("sizeSocks5");
+      const curHTTPEl = document.getElementById("curHTTP");
+      const idxHTTPEl = document.getElementById("idxHTTP");
+      const sizeHTTPEl = document.getElementById("sizeHTTP");
+      const sizeAllEl = document.getElementById("sizeAll");
+      const lastRefreshEl = document.getElementById("lastRefresh");
+      const lastErrEl = document.getElementById("lastErr");
+
+      const checkTypeEl = document.getElementById("checkType");
+      const checkTargetEl = document.getElementById("checkTarget");
+      const snippetsEl = document.getElementById("snippets");
+      const poolTypeEl = document.getElementById("poolType");
+      const poolBodyEl = document.getElementById("poolBody");
+
+      function lsGet(key, fallback) {
+        try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
+      }
+      function lsSet(key, value) {
+        try { localStorage.setItem(key, value); } catch {}
+      }
+
+      function inferWebAddr() {
+        const { hostname, port } = window.location;
+        if (!hostname) return "127.0.0.1:8088";
+        const p = port || "8088";
+        return `${hostname}:${p}`;
+      }
+
+      function renderSnippets() {
+        const socks = socksAddrEl.textContent.trim();
+        const http = httpAddrEl.textContent.trim();
+        const lines = [
+          `# SOCKS5（HTTPS）`,
+          `curl -v --proxy socks5h://${socks} https://google.com -m 20`,
+          ``,
+          `# HTTP（明文 HTTP）`,
+          `curl -v -x http://${http} http://example.com -m 20`,
+          ``,
+          `# HTTP（HTTPS 需要上游支持 CONNECT，否则会失败）`,
+          `curl -v -x http://${http} https://google.com -m 20`,
+        ];
+        snippetsEl.textContent = lines.join("\n");
+      }
+
+      function setClientAddrsFromStorage() {
+        webAddrEl.textContent = inferWebAddr();
+        socksAddrEl.textContent = lsGet("liteproxy.socks_addr", "127.0.0.1:1080");
+        httpAddrEl.textContent = lsGet("liteproxy.http_addr", "127.0.0.1:18080");
+        renderSnippets();
+      }
+
+      async function fetchJSON(path, opts) {
+        const r = await fetch(path, opts);
+        const text = await r.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch {}
+        if (!r.ok) {
+          const msg = (data && (data.error || data.message)) ? (data.error || data.message) : text;
+          throw new Error(`${path} -> ${r.status}: ${msg}`);
+        }
+        return data ?? text;
+      }
+
+      function fmtTime(s) {
+        if (!s) return "-";
+        try {
+          const d = new Date(s);
+          if (Number.isNaN(d.getTime())) return String(s);
+          return d.toLocaleString();
+        } catch {
+          return String(s);
+        }
+      }
+
+      function setText(el, v) { el.textContent = (v === undefined || v === null || v === "") ? "-" : String(v); }
+
+      function setErrText(el, v) {
+        if (!v) { el.textContent = "-"; el.className = "v"; return; }
+        el.textContent = String(v);
+        el.className = "v bad";
+      }
+
+      async function getStatus() {
+        const s = await fetchJSON("/api/status");
+        setText(curSocks5El, s.current_socks5 || "-");
+        setText(curHTTPEl, s.current_http || "-");
+        setText(idxSocks5El, s.current_socks5_index);
+        setText(idxHTTPEl, s.current_http_index);
+        setText(sizeSocks5El, s.socks5_pool_size);
+        setText(sizeHTTPEl, s.http_pool_size);
+        setText(sizeAllEl, s.pool_size);
+        setText(lastRefreshEl, fmtTime(s.last_refresh_at));
+        setErrText(lastErrEl, s.last_refresh_err);
+        return s;
+      }
+
+      function setBusy(b) {
+        for (const id of ["refresh", "next-socks5", "next-http", "check", "loadPool"]) {
+          const el = document.getElementById(id);
+          if (el) el.disabled = !!b;
+        }
+      }
+
+      async function doRefresh() {
+        setBusy(true);
+        refreshHint.textContent = "刷新中…（会并发验证并筛选可用代理）";
+        try {
+          const r = await fetchJSON("/api/refresh", { method: "POST" });
+          outEl.textContent = JSON.stringify(r, null, 2);
+        } catch (e) {
+          outEl.textContent = String(e);
+        } finally {
+          refreshHint.textContent = "";
+          setBusy(false);
+          await safeUpdate();
+        }
+      }
+
+      async function doNext(type) {
+        setBusy(true);
+        try {
+          const r = await fetchJSON(`/api/next?type=${encodeURIComponent(type)}`, { method: "POST" });
+          outEl.textContent = JSON.stringify(r, null, 2);
+        } catch (e) {
+          outEl.textContent = String(e);
+        } finally {
+          setBusy(false);
+          await safeUpdate();
+        }
+      }
+
+      async function doCheck() {
+        setBusy(true);
+        const type = checkTypeEl.value;
+        const target = checkTargetEl.value.trim();
+        const url = `/api/check?type=${encodeURIComponent(type)}${target ? `&target=${encodeURIComponent(target)}` : ""}`;
+        try {
+          const r = await fetchJSON(url, { method: "POST" });
+          outEl.textContent = JSON.stringify(r, null, 2);
+        } catch (e) {
+          outEl.textContent = String(e);
+        } finally {
+          setBusy(false);
+          await safeUpdate();
+        }
+      }
+
+      async function loadPool() {
+        setBusy(true);
+        poolHint.textContent = "加载中…";
+        poolBodyEl.innerHTML = "";
+        const t = poolTypeEl.value;
+        const url = t ? `/api/pool?type=${encodeURIComponent(t)}` : "/api/pool";
+        try {
+          const r = await fetchJSON(url);
+          const items = (r && r.items) ? r.items : [];
+          poolHint.textContent = `已加载 ${items.length} 条`;
+          const rows = items.map(n => {
+            const type = (n.type || "").toUpperCase();
+            const addr = `${n.ip}:${n.port}`;
+            const latency = (n.latency === undefined || n.latency === null) ? "" : String(n.latency);
+            return `<tr><td>${type}</td><td><code>${addr}</code></td><td>${latency}</td></tr>`;
+          }).join("");
+          poolBodyEl.innerHTML = rows || `<tr><td colspan="3" class="muted">暂无数据</td></tr>`;
+        } catch (e) {
+          poolHint.textContent = "加载失败";
+          outEl.textContent = String(e);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copyHint.textContent = "已复制到剪贴板";
+          setTimeout(() => (copyHint.textContent = ""), 1200);
+        } catch {
+          copyHint.textContent = "复制失败（浏览器未授权）";
+          setTimeout(() => (copyHint.textContent = ""), 1500);
+        }
+      }
+
+      async function safeUpdate() {
+        try { await getStatus(); } catch (e) { outEl.textContent = String(e); }
+      }
+
+      document.getElementById("refresh").onclick = () => doRefresh();
+      document.getElementById("next-socks5").onclick = () => doNext("socks5");
+      document.getElementById("next-http").onclick = () => doNext("http");
+      document.getElementById("check").onclick = () => doCheck();
+      document.getElementById("loadPool").onclick = () => loadPool();
+
+      document.getElementById("copyCurlSocks").onclick = () => copyText(snippetsEl.textContent.split("\n").slice(1,2).join("\n"));
+      document.getElementById("copyCurlHTTP").onclick = () => copyText(snippetsEl.textContent.split("\n").slice(4,5).join("\n"));
+
+      checkTypeEl.onchange = () => {
+        if (checkTargetEl.value.trim()) return;
+        checkTargetEl.value = (checkTypeEl.value === "http") ? "http://example.com/" : "example.com:443";
+      };
+
+      setClientAddrsFromStorage();
+      checkTargetEl.value = lsGet("liteproxy.check_target", "example.com:443");
+      checkTargetEl.onchange = () => lsSet("liteproxy.check_target", checkTargetEl.value);
+
+      safeUpdate();
+      setInterval(safeUpdate, 2500);
+    </script>
+  </body>
+</html>

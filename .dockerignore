@@ -1,0 +1,6 @@
+.git
+.gocache
+*.exe
+*.out
+*.test
+README.md
