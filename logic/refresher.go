@@ -50,12 +50,12 @@ func (r *Refresher) Refresh(ctx context.Context) (int, error) {
 
 	if r.validation.Enabled {
 		res, verr := ValidateAndFilter(ctx, nodes, r.validation, r.timeout)
-		if verr != nil && len(res.ValidHTTP) == 0 && len(res.ValidSOCKS5) == 0 {
+		if verr != nil && len(res.ValidSOCKS5) == 0 {
 			// Keep existing pool if new pool is unusable.
 			r.manager.SetRefreshResult(time.Now(), verr)
 			return 0, verr
 		}
-		nodes = MergeDedup(res.ValidSOCKS5, res.ValidHTTP)
+		nodes = MergeDedup(res.ValidSOCKS5)
 		if len(nodes) == 0 {
 			r.manager.SetRefreshResult(time.Now(), verr)
 			return 0, verr

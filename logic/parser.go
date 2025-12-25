@@ -9,12 +9,11 @@ import (
 
 // ParseProxySpec parses:
 // - socks5://ip:port
-// - http://ip:port (https:// treated as http)
 // - user:pass@ip:port
 // - ip:port
 //
-// If the spec has no scheme, defaultType is used when it's "http" or "socks5".
-// If defaultType is empty/"auto", a small heuristic is applied.
+// If the spec has no scheme, defaultType is used when it's "socks5".
+// If defaultType is empty/"auto", SOCKS5 is assumed.
 func ParseProxySpec(spec string, defaultType string) (ProxyNode, bool) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" || strings.HasPrefix(spec, "#") {
@@ -29,8 +28,6 @@ func ParseProxySpec(spec string, defaultType string) (ProxyNode, bool) {
 		}
 		scheme := strings.ToLower(u.Scheme)
 		switch scheme {
-		case "http", "https":
-			scheme = ProxyTypeHTTP
 		case "socks5", "socks5h":
 			scheme = ProxyTypeSOCKS5
 		default:
@@ -78,8 +75,8 @@ func ParseProxySpec(spec string, defaultType string) (ProxyNode, bool) {
 	}
 
 	pt := defaultType
-	if pt != ProxyTypeHTTP && pt != ProxyTypeSOCKS5 {
-		pt = guessProxyType(port)
+	if pt != ProxyTypeSOCKS5 {
+		pt = ProxyTypeSOCKS5
 	}
 
 	user := ""
@@ -103,16 +100,6 @@ func ParseProxySpec(spec string, defaultType string) (ProxyNode, bool) {
 	}, true
 }
 
-func guessProxyType(port string) string {
-	// Heuristic: common SOCKS ports.
-	switch port {
-	case "1080", "1081", "1085", "9050", "9150", "4145":
-		return ProxyTypeSOCKS5
-	default:
-		return ProxyTypeHTTP
-	}
-}
-
 func validPort(s string) bool {
 	n, err := strconv.Atoi(s)
 	if err != nil {
@@ -120,4 +107,3 @@ func validPort(s string) bool {
 	}
 	return n >= 1 && n <= 65535
 }
-

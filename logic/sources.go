@@ -9,12 +9,12 @@ import (
 
 type ProxySource struct {
 	URL  string `json:"url"`
-	Type string `json:"type,omitempty"` // http | socks5 | auto (or empty)
+	Type string `json:"type,omitempty"` // socks5 | auto (or empty)
 }
 
 func (s ProxySource) Validate() error {
 	switch strings.ToLower(strings.TrimSpace(s.Type)) {
-	case "", "auto", ProxyTypeHTTP, ProxyTypeSOCKS5:
+	case "", "auto", ProxyTypeSOCKS5:
 		return nil
 	default:
 		return fmt.Errorf("unsupported source type: %q", s.Type)
@@ -56,6 +56,5 @@ func (s *Sources) UnmarshalJSON(b []byte) error {
 func DefaultSources() Sources {
 	return Sources{
 		{URL: DefaultSOCKS5Source, Type: ProxyTypeSOCKS5},
-		{URL: DefaultHTTPSource, Type: ProxyTypeHTTP},
 	}
 }

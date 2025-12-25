@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	DefaultHTTPSource   = "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
 	DefaultSOCKS5Source = "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt"
 )
 

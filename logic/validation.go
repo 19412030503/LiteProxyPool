@@ -10,22 +10,14 @@ import (
 
 type ValidationConfig struct {
 	Enabled        bool   `json:"enabled"`
-	HTTPTestURL    string `json:"http_test_url"`
 	SOCKS5TestAddr string `json:"socks5_test_addr"`
-	MaxHTTP        int    `json:"max_http"`
 	MaxSOCKS5      int    `json:"max_socks5"`
 	Concurrency    int    `json:"concurrency"`
 }
 
 func (c *ValidationConfig) ApplyDefaults() {
-	if c.HTTPTestURL == "" {
-		c.HTTPTestURL = "http://example.com/"
-	}
 	if c.SOCKS5TestAddr == "" {
 		c.SOCKS5TestAddr = "example.com:443"
-	}
-	if c.MaxHTTP == 0 {
-		c.MaxHTTP = 500
 	}
 	if c.MaxSOCKS5 == 0 {
 		c.MaxSOCKS5 = 200
@@ -39,11 +31,8 @@ func (c *ValidationConfig) ApplyDefaults() {
 }
 
 type ValidationResult struct {
-	ValidHTTP        []ProxyNode
 	ValidSOCKS5      []ProxyNode
-	TestedHTTP       int
 	TestedSOCKS5     int
-	ValidHTTPCount   int
 	ValidSOCKS5Count int
 	Errors           error
 }
@@ -54,12 +43,9 @@ func ValidateAndFilter(ctx context.Context, nodes []ProxyNode, cfg ValidationCon
 	}
 	cfg.ApplyDefaults()
 
-	httpNodes := make([]ProxyNode, 0, 1024)
 	socksNodes := make([]ProxyNode, 0, 1024)
 	for _, n := range nodes {
 		switch n.Type {
-		case ProxyTypeHTTP:
-			httpNodes = append(httpNodes, n)
 		case ProxyTypeSOCKS5:
 			socksNodes = append(socksNodes, n)
 		}
@@ -67,14 +53,6 @@ func ValidateAndFilter(ctx context.Context, nodes []ProxyNode, cfg ValidationCon
 
 	var res ValidationResult
 	var errList []error
-
-	validHTTP, testedHTTP, err := validateHTTP(ctx, httpNodes, cfg, timeout)
-	if err != nil {
-		errList = append(errList, fmt.Errorf("http validation: %w", err))
-	}
-	res.ValidHTTP = validHTTP
-	res.TestedHTTP = testedHTTP
-	res.ValidHTTPCount = len(validHTTP)
 
 	validSOCKS, testedSOCKS, err := validateSOCKS5(ctx, socksNodes, cfg, timeout)
 	if err != nil {
@@ -88,7 +66,7 @@ func ValidateAndFilter(ctx context.Context, nodes []ProxyNode, cfg ValidationCon
 		res.Errors = errors.Join(errList...)
 	}
 
-	merged := MergeDedup(res.ValidSOCKS5, res.ValidHTTP)
+	merged := MergeDedup(res.ValidSOCKS5)
 	if len(merged) == 0 {
 		if res.Errors != nil {
 			return res, res.Errors
@@ -96,23 +74,6 @@ func ValidateAndFilter(ctx context.Context, nodes []ProxyNode, cfg ValidationCon
 		return res, errors.New("no valid proxies found")
 	}
 	return res, res.Errors
-}
-
-func validateHTTP(ctx context.Context, candidates []ProxyNode, cfg ValidationConfig, timeout time.Duration) ([]ProxyNode, int, error) {
-	keep := cfg.MaxHTTP
-	if keep < 0 {
-		keep = 0
-	}
-	testLimit := candidateLimit(len(candidates), keep)
-	candidates = candidates[:testLimit]
-	return runValidation(ctx, candidates, cfg.Concurrency, keep, func(ctx context.Context, n ProxyNode) (ProxyNode, bool) {
-		ok, latency, err := CheckHTTPViaProxy(ctx, n, cfg.HTTPTestURL, timeout)
-		if err != nil || !ok {
-			return ProxyNode{}, false
-		}
-		n.LatencyMS = latency
-		return n, true
-	})
 }
 
 func validateSOCKS5(ctx context.Context, candidates []ProxyNode, cfg ValidationConfig, timeout time.Duration) ([]ProxyNode, int, error) {
@@ -245,4 +206,3 @@ func maxInt(a, b int) int {
 	}
 	return b
 }
-

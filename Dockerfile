@@ -25,7 +25,7 @@ COPY config.docker.json /app/config.json
 
 USER liteproxy
 
-EXPOSE 1080 18080 8088
+EXPOSE 1080 8088
 
 ENTRYPOINT ["/app/lite-proxy"]
 CMD ["-config", "/app/config.json"]

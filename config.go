@@ -57,9 +57,9 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 
 type Config struct {
 	SOCKSListen  string        `json:"socks_listen"`
-	HTTPListen   string        `json:"http_listen"`
 	WebListen    string        `json:"web_listen"`
 	RefreshEvery Duration      `json:"refresh_every"`
+	RotateEvery  Duration      `json:"rotate_every"`
 	DialTimeout  Duration      `json:"dial_timeout"`
 	Sources      *logic.Sources `json:"sources"`
 	Proxies      []string      `json:"proxies"`
@@ -85,14 +85,14 @@ func (c *Config) ApplyDefaults() {
 	if c.SOCKSListen == "" {
 		c.SOCKSListen = "127.0.0.1:1080"
 	}
-	if c.HTTPListen == "" {
-		c.HTTPListen = "127.0.0.1:18080"
-	}
 	if c.WebListen == "" {
 		c.WebListen = "127.0.0.1:8088"
 	}
 	if !c.RefreshEvery.IsSet() {
 		c.RefreshEvery = DurationValue(30 * time.Minute)
+	}
+	if !c.RotateEvery.IsSet() {
+		c.RotateEvery = DurationValue(30 * time.Second)
 	}
 	if !c.DialTimeout.IsSet() {
 		c.DialTimeout = DurationValue(15 * time.Second)
@@ -108,9 +108,6 @@ func (c *Config) ApplyDefaults() {
 func (c *Config) Validate() error {
 	if c.SOCKSListen == "" {
 		return fmt.Errorf("socks_listen is empty")
-	}
-	if c.HTTPListen == "" {
-		return fmt.Errorf("http_listen is empty")
 	}
 	if c.WebListen == "" {
 		return fmt.Errorf("web_listen is empty")

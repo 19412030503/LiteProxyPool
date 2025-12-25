@@ -44,12 +44,11 @@
       <div class="row">
         <div>
           <h1>LiteProxy</h1>
-          <div class="muted small">公共代理池适配器：本地 SOCKS5 / HTTP 出口按类型分流。</div>
+          <div class="muted small">公共代理池适配器：本地 SOCKS5 出口（上游 SOCKS5 池）。</div>
         </div>
         <div class="right row">
           <span class="pill small">Web：<code id="webAddr">127.0.0.1:8088</code></span>
           <span class="pill small">SOCKS5：<code id="socksAddr">127.0.0.1:1080</code></span>
-          <span class="pill small">HTTP：<code id="httpAddr">127.0.0.1:18080</code></span>
         </div>
       </div>
 
@@ -58,18 +57,13 @@
         <div class="actions">
           <button id="refresh">刷新代理池</button>
           <button id="next-socks5">切换 SOCKS5 节点</button>
-          <button id="next-http">切换 HTTP 节点</button>
           <span class="right muted small" id="refreshHint"></span>
         </div>
         <div style="height: 10px"></div>
         <div class="actions">
-          <select id="checkType" aria-label="check type">
-            <option value="socks5">验证 SOCKS5（TCP）</option>
-            <option value="http">验证 HTTP（明文）</option>
-          </select>
-          <input id="checkTarget" placeholder="SOCKS5: example.com:443 / HTTP: http://example.com/" />
+          <input id="checkTarget" placeholder="验证目标（例如 example.com:443）" />
           <button id="check">验证当前节点</button>
-          <span class="muted small">提示：HTTP 代理若不支持 CONNECT，HTTPS 会失败（协议限制）。</span>
+          <span class="muted small">验证方式：通过当前 SOCKS5 节点建立 TCP 连接。</span>
         </div>
       </div>
 
@@ -81,14 +75,6 @@
             <div class="k">当前节点</div><div class="v" id="curSocks5">-</div>
             <div class="k">索引</div><div class="v" id="idxSocks5">-</div>
             <div class="k">可用数量</div><div class="v" id="sizeSocks5">-</div>
-          </div>
-        </div>
-        <div class="card" style="grid-column: span 6">
-          <h3>HTTP 上游池（供本地 HTTP 出口使用）</h3>
-          <div class="kv">
-            <div class="k">当前节点</div><div class="v" id="curHTTP">-</div>
-            <div class="k">索引</div><div class="v" id="idxHTTP">-</div>
-            <div class="k">可用数量</div><div class="v" id="sizeHTTP">-</div>
           </div>
         </div>
         <div class="card" style="grid-column: span 12">
@@ -105,7 +91,6 @@
       <div class="card">
         <div class="row">
           <button id="copyCurlSocks">复制 SOCKS5 curl</button>
-          <button id="copyCurlHTTP">复制 HTTP curl</button>
           <span class="muted small" id="copyHint"></span>
         </div>
         <div style="height: 10px"></div>
@@ -118,7 +103,6 @@
           <select id="poolType" aria-label="pool type">
             <option value="">全部（前 200）</option>
             <option value="socks5">SOCKS5（前 200）</option>
-            <option value="http">HTTP（前 200）</option>
           </select>
           <button id="loadPool">加载</button>
           <span class="muted small" id="poolHint"></span>
@@ -149,20 +133,15 @@
       const copyHint = document.getElementById("copyHint");
 
       const socksAddrEl = document.getElementById("socksAddr");
-      const httpAddrEl = document.getElementById("httpAddr");
       const webAddrEl = document.getElementById("webAddr");
 
       const curSocks5El = document.getElementById("curSocks5");
       const idxSocks5El = document.getElementById("idxSocks5");
       const sizeSocks5El = document.getElementById("sizeSocks5");
-      const curHTTPEl = document.getElementById("curHTTP");
-      const idxHTTPEl = document.getElementById("idxHTTP");
-      const sizeHTTPEl = document.getElementById("sizeHTTP");
       const sizeAllEl = document.getElementById("sizeAll");
       const lastRefreshEl = document.getElementById("lastRefresh");
       const lastErrEl = document.getElementById("lastErr");
 
-      const checkTypeEl = document.getElementById("checkType");
       const checkTargetEl = document.getElementById("checkTarget");
       const snippetsEl = document.getElementById("snippets");
       const poolTypeEl = document.getElementById("poolType");
@@ -184,16 +163,9 @@
 
       function renderSnippets() {
         const socks = socksAddrEl.textContent.trim();
-        const http = httpAddrEl.textContent.trim();
         const lines = [
           `# SOCKS5（HTTPS）`,
           `curl -v --proxy socks5h://${socks} https://google.com -m 20`,
-          ``,
-          `# HTTP（明文 HTTP）`,
-          `curl -v -x http://${http} http://example.com -m 20`,
-          ``,
-          `# HTTP（HTTPS 需要上游支持 CONNECT，否则会失败）`,
-          `curl -v -x http://${http} https://google.com -m 20`,
         ];
         snippetsEl.textContent = lines.join("\n");
       }
@@ -201,7 +173,6 @@
       function setClientAddrsFromStorage() {
         webAddrEl.textContent = inferWebAddr();
         socksAddrEl.textContent = lsGet("liteproxy.socks_addr", "127.0.0.1:1080");
-        httpAddrEl.textContent = lsGet("liteproxy.http_addr", "127.0.0.1:18080");
         renderSnippets();
       }
 
@@ -239,11 +210,8 @@
       async function getStatus() {
         const s = await fetchJSON("/api/status");
         setText(curSocks5El, s.current_socks5 || "-");
-        setText(curHTTPEl, s.current_http || "-");
         setText(idxSocks5El, s.current_socks5_index);
-        setText(idxHTTPEl, s.current_http_index);
         setText(sizeSocks5El, s.socks5_pool_size);
-        setText(sizeHTTPEl, s.http_pool_size);
         setText(sizeAllEl, s.pool_size);
         setText(lastRefreshEl, fmtTime(s.last_refresh_at));
         setErrText(lastErrEl, s.last_refresh_err);
@@ -251,7 +219,7 @@
       }
 
       function setBusy(b) {
-        for (const id of ["refresh", "next-socks5", "next-http", "check", "loadPool"]) {
+        for (const id of ["refresh", "next-socks5", "check", "loadPool"]) {
           const el = document.getElementById(id);
           if (el) el.disabled = !!b;
         }
@@ -272,10 +240,10 @@
         }
       }
 
-      async function doNext(type) {
+      async function doNext() {
         setBusy(true);
         try {
-          const r = await fetchJSON(`/api/next?type=${encodeURIComponent(type)}`, { method: "POST" });
+          const r = await fetchJSON("/api/next", { method: "POST" });
           outEl.textContent = JSON.stringify(r, null, 2);
         } catch (e) {
           outEl.textContent = String(e);
@@ -287,9 +255,8 @@
 
       async function doCheck() {
         setBusy(true);
-        const type = checkTypeEl.value;
         const target = checkTargetEl.value.trim();
-        const url = `/api/check?type=${encodeURIComponent(type)}${target ? `&target=${encodeURIComponent(target)}` : ""}`;
+        const url = `/api/check${target ? `?target=${encodeURIComponent(target)}` : ""}`;
         try {
           const r = await fetchJSON(url, { method: "POST" });
           outEl.textContent = JSON.stringify(r, null, 2);
@@ -342,18 +309,11 @@
       }
 
       document.getElementById("refresh").onclick = () => doRefresh();
-      document.getElementById("next-socks5").onclick = () => doNext("socks5");
-      document.getElementById("next-http").onclick = () => doNext("http");
+      document.getElementById("next-socks5").onclick = () => doNext();
       document.getElementById("check").onclick = () => doCheck();
       document.getElementById("loadPool").onclick = () => loadPool();
 
       document.getElementById("copyCurlSocks").onclick = () => copyText(snippetsEl.textContent.split("\n").slice(1,2).join("\n"));
-      document.getElementById("copyCurlHTTP").onclick = () => copyText(snippetsEl.textContent.split("\n").slice(4,5).join("\n"));
-
-      checkTypeEl.onchange = () => {
-        if (checkTargetEl.value.trim()) return;
-        checkTargetEl.value = (checkTypeEl.value === "http") ? "http://example.com/" : "example.com:443";
-      };
 
       setClientAddrsFromStorage();
       checkTargetEl.value = lsGet("liteproxy.check_target", "example.com:443");

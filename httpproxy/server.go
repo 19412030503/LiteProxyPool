@@ -1,3 +1,5 @@
+//go:build httpproxy
+
 package httpproxy
 
 import (
