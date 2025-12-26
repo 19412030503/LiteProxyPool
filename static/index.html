@@ -44,11 +44,12 @@
       <div class="row">
         <div>
           <h1>LiteProxy</h1>
-          <div class="muted small">公共代理池适配器：本地 SOCKS5 出口（上游 SOCKS5 池）。</div>
+          <div class="muted small">公共代理池适配器：本地两个 SOCKS5 出口（固定出口可手动切换；自动出口每个连接轮询）。</div>
         </div>
         <div class="right row">
           <span class="pill small">Web：<code id="webAddr">127.0.0.1:8088</code></span>
-          <span class="pill small">SOCKS5：<code id="socksAddr">127.0.0.1:1080</code></span>
+          <span class="pill small">SOCKS5 固定：<code id="socksFixedAddr">127.0.0.1:1080</code></span>
+          <span class="pill small">SOCKS5 自动：<code id="socksAutoAddr">127.0.0.1:1081</code></span>
         </div>
       </div>
 
@@ -56,7 +57,7 @@
       <div class="card">
         <div class="actions">
           <button id="refresh">刷新代理池</button>
-          <button id="next-socks5">切换 SOCKS5 节点</button>
+          <button id="next-socks5">切换固定出口节点</button>
           <span class="right muted small" id="refreshHint"></span>
         </div>
         <div style="height: 10px"></div>
@@ -70,11 +71,19 @@
       <h2>状态</h2>
       <div class="grid">
         <div class="card" style="grid-column: span 6">
-          <h3>SOCKS5 上游池（供本地 SOCKS5 出口使用）</h3>
+          <h3>SOCKS5 固定出口（UI 手动切换）</h3>
           <div class="kv">
-            <div class="k">当前节点</div><div class="v" id="curSocks5">-</div>
-            <div class="k">索引</div><div class="v" id="idxSocks5">-</div>
-            <div class="k">可用数量</div><div class="v" id="sizeSocks5">-</div>
+            <div class="k">当前节点</div><div class="v" id="curSocks5Fixed">-</div>
+            <div class="k">索引</div><div class="v" id="idxSocks5Fixed">-</div>
+            <div class="k">可用数量</div><div class="v" id="sizeSocks5Fixed">-</div>
+          </div>
+        </div>
+        <div class="card" style="grid-column: span 6">
+          <h3>SOCKS5 自动出口（每个连接轮询）</h3>
+          <div class="kv">
+            <div class="k">最近节点</div><div class="v" id="curSocks5Auto">-</div>
+            <div class="k">索引</div><div class="v" id="idxSocks5Auto">-</div>
+            <div class="k">可用数量</div><div class="v" id="sizeSocks5Auto">-</div>
           </div>
         </div>
         <div class="card" style="grid-column: span 12">
@@ -90,7 +99,8 @@
       <h2>快速测试</h2>
       <div class="card">
         <div class="row">
-          <button id="copyCurlSocks">复制 SOCKS5 curl</button>
+          <button id="copyCurlSocksFixed">复制固定 SOCKS5 curl</button>
+          <button id="copyCurlSocksAuto">复制自动 SOCKS5 curl</button>
           <span class="muted small" id="copyHint"></span>
         </div>
         <div style="height: 10px"></div>
@@ -132,12 +142,16 @@
       const poolHint = document.getElementById("poolHint");
       const copyHint = document.getElementById("copyHint");
 
-      const socksAddrEl = document.getElementById("socksAddr");
+      const socksFixedAddrEl = document.getElementById("socksFixedAddr");
+      const socksAutoAddrEl = document.getElementById("socksAutoAddr");
       const webAddrEl = document.getElementById("webAddr");
 
-      const curSocks5El = document.getElementById("curSocks5");
-      const idxSocks5El = document.getElementById("idxSocks5");
-      const sizeSocks5El = document.getElementById("sizeSocks5");
+      const curSocks5FixedEl = document.getElementById("curSocks5Fixed");
+      const idxSocks5FixedEl = document.getElementById("idxSocks5Fixed");
+      const sizeSocks5FixedEl = document.getElementById("sizeSocks5Fixed");
+      const curSocks5AutoEl = document.getElementById("curSocks5Auto");
+      const idxSocks5AutoEl = document.getElementById("idxSocks5Auto");
+      const sizeSocks5AutoEl = document.getElementById("sizeSocks5Auto");
       const sizeAllEl = document.getElementById("sizeAll");
       const lastRefreshEl = document.getElementById("lastRefresh");
       const lastErrEl = document.getElementById("lastErr");
@@ -161,18 +175,37 @@
         return `${hostname}:${p}`;
       }
 
+      function inferClientHost() {
+        return window.location.hostname || "127.0.0.1";
+      }
+
+      function clientAddrFromListen(listen, fallbackPort) {
+        const s = String(listen || "").trim();
+        const idx = s.lastIndexOf(":");
+        if (idx <= 0) return `${inferClientHost()}:${fallbackPort}`;
+        let host = s.slice(0, idx);
+        const port = s.slice(idx + 1) || String(fallbackPort);
+        if (host === "0.0.0.0" || host === "::" || host === "[::]") host = inferClientHost();
+        return `${host}:${port}`;
+      }
+
       function renderSnippets() {
-        const socks = socksAddrEl.textContent.trim();
+        const socksFixed = socksFixedAddrEl.textContent.trim();
+        const socksAuto = socksAutoAddrEl.textContent.trim();
         const lines = [
-          `# SOCKS5（HTTPS）`,
-          `curl -v --proxy socks5h://${socks} https://google.com -m 20`,
+          `# SOCKS5 固定出口（HTTPS）`,
+          `curl -v --proxy socks5h://${socksFixed} https://google.com -m 20`,
+          ``,
+          `# SOCKS5 自动出口（每连接轮询）`,
+          `curl -v --proxy socks5h://${socksAuto} https://google.com -m 20`,
         ];
         snippetsEl.textContent = lines.join("\n");
       }
 
       function setClientAddrsFromStorage() {
         webAddrEl.textContent = inferWebAddr();
-        socksAddrEl.textContent = lsGet("liteproxy.socks_addr", "127.0.0.1:1080");
+        socksFixedAddrEl.textContent = lsGet("liteproxy.socks_fixed_addr", "127.0.0.1:1080");
+        socksAutoAddrEl.textContent = lsGet("liteproxy.socks_auto_addr", "127.0.0.1:1081");
         renderSnippets();
       }
 
@@ -209,12 +242,32 @@
 
       async function getStatus() {
         const s = await fetchJSON("/api/status");
-        setText(curSocks5El, s.current_socks5 || "-");
-        setText(idxSocks5El, s.current_socks5_index);
-        setText(sizeSocks5El, s.socks5_pool_size);
-        setText(sizeAllEl, s.pool_size);
-        setText(lastRefreshEl, fmtTime(s.last_refresh_at));
-        setErrText(lastErrEl, s.last_refresh_err);
+
+        webAddrEl.textContent = inferWebAddr();
+        if (s && s.socks_fixed_listen) socksFixedAddrEl.textContent = clientAddrFromListen(s.socks_fixed_listen, 1080);
+        if (s && s.socks_auto_listen) socksAutoAddrEl.textContent = clientAddrFromListen(s.socks_auto_listen, 1081);
+        renderSnippets();
+
+        const fixed = (s && s.fixed) ? s.fixed : s;
+        const auto = (s && s.auto) ? s.auto : null;
+
+        setText(curSocks5FixedEl, fixed.current_socks5 || "-");
+        setText(idxSocks5FixedEl, fixed.current_socks5_index);
+        setText(sizeSocks5FixedEl, fixed.socks5_pool_size);
+
+        if (auto) {
+          setText(curSocks5AutoEl, auto.current_socks5 || "-");
+          setText(idxSocks5AutoEl, (auto.current_socks5_index < 0) ? "-" : auto.current_socks5_index);
+          setText(sizeSocks5AutoEl, auto.socks5_pool_size);
+        } else {
+          setText(curSocks5AutoEl, "-");
+          setText(idxSocks5AutoEl, "-");
+          setText(sizeSocks5AutoEl, "-");
+        }
+
+        setText(sizeAllEl, fixed.pool_size);
+        setText(lastRefreshEl, fmtTime(fixed.last_refresh_at));
+        setErrText(lastErrEl, fixed.last_refresh_err);
         return s;
       }
 
@@ -313,7 +366,8 @@
       document.getElementById("check").onclick = () => doCheck();
       document.getElementById("loadPool").onclick = () => loadPool();
 
-      document.getElementById("copyCurlSocks").onclick = () => copyText(snippetsEl.textContent.split("\n").slice(1,2).join("\n"));
+      document.getElementById("copyCurlSocksFixed").onclick = () => copyText(snippetsEl.textContent.split("\n").slice(1,2).join("\n"));
+      document.getElementById("copyCurlSocksAuto").onclick = () => copyText(snippetsEl.textContent.split("\n").slice(4,5).join("\n"));
 
       setClientAddrsFromStorage();
       checkTargetEl.value = lsGet("liteproxy.check_target", "example.com:443");

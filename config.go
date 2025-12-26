@@ -57,6 +57,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 
 type Config struct {
 	SOCKSListen  string        `json:"socks_listen"`
+	SOCKSAutoListen string     `json:"socks_auto_listen"`
 	WebListen    string        `json:"web_listen"`
 	RefreshEvery Duration      `json:"refresh_every"`
 	RotateEvery  Duration      `json:"rotate_every"`
@@ -85,6 +86,9 @@ func (c *Config) ApplyDefaults() {
 	if c.SOCKSListen == "" {
 		c.SOCKSListen = "127.0.0.1:1080"
 	}
+	if c.SOCKSAutoListen == "" {
+		c.SOCKSAutoListen = "127.0.0.1:1081"
+	}
 	if c.WebListen == "" {
 		c.WebListen = "127.0.0.1:8088"
 	}
@@ -92,7 +96,8 @@ func (c *Config) ApplyDefaults() {
 		c.RefreshEvery = DurationValue(30 * time.Minute)
 	}
 	if !c.RotateEvery.IsSet() {
-		c.RotateEvery = DurationValue(30 * time.Second)
+		// Default to disabled: fixed SOCKS should stay stable unless switched via UI.
+		c.RotateEvery = DurationValue(0)
 	}
 	if !c.DialTimeout.IsSet() {
 		c.DialTimeout = DurationValue(15 * time.Second)
@@ -108,6 +113,9 @@ func (c *Config) ApplyDefaults() {
 func (c *Config) Validate() error {
 	if c.SOCKSListen == "" {
 		return fmt.Errorf("socks_listen is empty")
+	}
+	if c.SOCKSAutoListen == "" {
+		return fmt.Errorf("socks_auto_listen is empty")
 	}
 	if c.WebListen == "" {
 		return fmt.Errorf("web_listen is empty")

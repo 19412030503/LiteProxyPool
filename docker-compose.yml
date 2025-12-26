@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     ports:
       - "${LITEPROXY_SOCKS_PORT:-1080}:1080"
+      - "${LITEPROXY_SOCKS_AUTO_PORT:-1081}:1081"
       - "${LITEPROXY_WEB_PORT:-8088}:8088"
     volumes:
       - ./config.docker.json:/app/config.json:ro

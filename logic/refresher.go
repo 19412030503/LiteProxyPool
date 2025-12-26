@@ -8,7 +8,7 @@ import (
 )
 
 type Refresher struct {
-	manager *ProxyManager
+	managers []*ProxyManager
 	mu      sync.Mutex
 
 	sources Sources
@@ -17,9 +17,10 @@ type Refresher struct {
 	timeout    time.Duration
 }
 
-func NewRefresher(manager *ProxyManager, sources Sources, proxies []string, validation ValidationConfig, timeout time.Duration) *Refresher {
+func NewRefresher(managers []*ProxyManager, sources Sources, proxies []string, validation ValidationConfig, timeout time.Duration) *Refresher {
+	managers = append([]*ProxyManager(nil), managers...)
 	return &Refresher{
-		manager: manager,
+		managers: managers,
 		sources: sources,
 		proxies: append([]string(nil), proxies...),
 		validation: validation,
@@ -34,7 +35,12 @@ func (r *Refresher) Refresh(ctx context.Context) (int, error) {
 	staticNodes := ParseProxySpecs(r.proxies, "auto")
 	fetched, fetchErr := FetchFromSources(ctx, r.sources)
 	if fetchErr != nil && len(staticNodes) == 0 {
-		r.manager.SetRefreshResult(time.Now(), fetchErr)
+		for _, m := range r.managers {
+			if m == nil {
+				continue
+			}
+			m.SetRefreshResult(time.Now(), fetchErr)
+		}
 		return 0, fetchErr
 	}
 
@@ -44,7 +50,12 @@ func (r *Refresher) Refresh(ctx context.Context) (int, error) {
 		if fetchErr != nil {
 			err = fetchErr
 		}
-		r.manager.SetRefreshResult(time.Now(), err)
+		for _, m := range r.managers {
+			if m == nil {
+				continue
+			}
+			m.SetRefreshResult(time.Now(), err)
+		}
 		return 0, err
 	}
 
@@ -52,24 +63,44 @@ func (r *Refresher) Refresh(ctx context.Context) (int, error) {
 		res, verr := ValidateAndFilter(ctx, nodes, r.validation, r.timeout)
 		if verr != nil && len(res.ValidSOCKS5) == 0 {
 			// Keep existing pool if new pool is unusable.
-			r.manager.SetRefreshResult(time.Now(), verr)
+			for _, m := range r.managers {
+				if m == nil {
+					continue
+				}
+				m.SetRefreshResult(time.Now(), verr)
+			}
 			return 0, verr
 		}
 		nodes = MergeDedup(res.ValidSOCKS5)
 		if len(nodes) == 0 {
-			r.manager.SetRefreshResult(time.Now(), verr)
+			for _, m := range r.managers {
+				if m == nil {
+					continue
+				}
+				m.SetRefreshResult(time.Now(), verr)
+			}
 			return 0, verr
 		}
 		// Surface partial validation errors as refresh error (warning), but still update pool.
 		if verr != nil {
-			r.manager.SetPool(nodes)
-			r.manager.SetRefreshResult(time.Now(), verr)
+			for _, m := range r.managers {
+				if m == nil {
+					continue
+				}
+				m.SetPool(nodes)
+				m.SetRefreshResult(time.Now(), verr)
+			}
 			return len(nodes), verr
 		}
 	}
 
-	r.manager.SetPool(nodes)
-	r.manager.SetRefreshResult(time.Now(), fetchErr)
+	for _, m := range r.managers {
+		if m == nil {
+			continue
+		}
+		m.SetPool(nodes)
+		m.SetRefreshResult(time.Now(), fetchErr)
+	}
 	return len(nodes), fetchErr
 }
 

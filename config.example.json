@@ -1,8 +1,9 @@
 {
   "socks_listen": "127.0.0.1:1080",
+  "socks_auto_listen": "127.0.0.1:1081",
   "web_listen": "127.0.0.1:8088",
   "refresh_every": "30m",
-  "rotate_every": "30s",
+  "rotate_every": "0s",
   "dial_timeout": "15s",
   "validation": {
     "enabled": true,

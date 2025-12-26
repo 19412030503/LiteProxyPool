@@ -4,7 +4,7 @@
 
 ```bash
 docker build -t lite-proxy .
-docker run --rm -p 1080:1080 -p 8088:8088 lite-proxy
+docker run --rm -p 1080:1080 -p 1081:1081 -p 8088:8088 lite-proxy
 ```
 ## Docker Compose
 
@@ -15,5 +15,5 @@ docker compose down
 ```
 
 ```bash
-docker run --rm -p 1080:1080 -p 8088:8088 -v "$PWD/config.json:/app/config.json:ro" lite-proxy
+docker run --rm -p 1080:1080 -p 1081:1081 -p 8088:8088 -v "$PWD/config.json:/app/config.json:ro" lite-proxy
 ```

@@ -59,6 +59,10 @@ type ProxyManager struct {
 
 func NewProxyManager() *ProxyManager { return &ProxyManager{} }
 
+func NewProxyManagerAuto() *ProxyManager {
+	return &ProxyManager{currentIndex: -1}
+}
+
 func (m *ProxyManager) SetPool(nodes []ProxyNode) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -124,7 +128,11 @@ func (m *ProxyManager) Next() (ProxyNode, bool) {
 	if len(m.pool) == 0 {
 		return ProxyNode{}, false
 	}
-	m.currentIndex = (m.currentIndex + 1) % len(m.pool)
+	if m.currentIndex < 0 {
+		m.currentIndex = 0
+	} else {
+		m.currentIndex = (m.currentIndex + 1) % len(m.pool)
+	}
 	return m.pool[m.currentIndex], true
 }
 
