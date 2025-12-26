@@ -11,6 +11,7 @@ import (
 type ValidationConfig struct {
 	Enabled        bool   `json:"enabled"`
 	SOCKS5TestAddr string `json:"socks5_test_addr"`
+	SOCKS5TLSVerify *bool `json:"socks5_tls_verify,omitempty"`
 	MaxSOCKS5      int    `json:"max_socks5"`
 	Concurrency    int    `json:"concurrency"`
 }
@@ -28,6 +29,17 @@ func (c *ValidationConfig) ApplyDefaults() {
 	if c.Concurrency > 256 {
 		c.Concurrency = 256
 	}
+}
+
+func (c ValidationConfig) TLSVerifyEnabled() bool {
+	if c.SOCKS5TLSVerify != nil {
+		return *c.SOCKS5TLSVerify
+	}
+	_, _, port, err := ParseTargetAddr(c.SOCKS5TestAddr)
+	if err != nil {
+		return false
+	}
+	return port == "443"
 }
 
 type ValidationResult struct {
@@ -88,11 +100,18 @@ func validateSOCKS5(ctx context.Context, candidates []ProxyNode, cfg ValidationC
 		cctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		conn, err := DialViaProxy(cctx, n, "tcp", cfg.SOCKS5TestAddr, timeout)
-		if err != nil {
-			return ProxyNode{}, false
+		if cfg.TLSVerifyEnabled() {
+			ok, _, err := CheckSOCKS5TLS(cctx, n, cfg.SOCKS5TestAddr, timeout)
+			if err != nil || !ok {
+				return ProxyNode{}, false
+			}
+		} else {
+			conn, err := DialViaProxy(cctx, n, "tcp", cfg.SOCKS5TestAddr, timeout)
+			if err != nil {
+				return ProxyNode{}, false
+			}
+			_ = conn.Close()
 		}
-		_ = conn.Close()
 		n.LatencyMS = time.Since(start).Milliseconds()
 		return n, true
 	})

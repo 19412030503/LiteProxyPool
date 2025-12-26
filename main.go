@@ -138,6 +138,7 @@ func main() {
 	if rotateEvery > 0 {
 		hcTarget := cfg.Validation.SOCKS5TestAddr
 		hcTimeout := dialTimeout
+		hcTLSVerify := cfg.Validation.TLSVerifyEnabled()
 		if hcTimeout <= 0 || hcTimeout > 10*time.Second {
 			hcTimeout = 10 * time.Second
 		}
@@ -153,7 +154,13 @@ func main() {
 					return
 				}
 				cctx, cancel := context.WithTimeout(ctx, hcTimeout)
-				ok2, _, err := logic.CheckSOCKS5TCP(cctx, current, hcTarget, hcTimeout)
+				var ok2 bool
+				var err error
+				if hcTLSVerify {
+					ok2, _, err = logic.CheckSOCKS5TLS(cctx, current, hcTarget, hcTimeout)
+				} else {
+					ok2, _, err = logic.CheckSOCKS5TCP(cctx, current, hcTarget, hcTimeout)
+				}
 				cancel()
 				if err == nil && ok2 {
 					fixedManager.ReportSuccess(current)
@@ -290,8 +297,31 @@ func main() {
 		if target == "" {
 			target = "example.com:443"
 		}
+
+		tlsParam := c.Query("tls")
+		tlsVerify := false
+		switch tlsParam {
+		case "1", "true", "yes", "on":
+			tlsVerify = true
+		case "0", "false", "no", "off":
+			tlsVerify = false
+		default:
+			_, _, port, err := logic.ParseTargetAddr(target)
+			if err == nil && port == "443" {
+				tlsVerify = true
+			}
+		}
+
 		start := time.Now()
-		conn, err := logic.DialViaProxy(rctx, current, "tcp", target, dialTimeout)
+		var (
+			ok2 bool
+			err error
+		)
+		if tlsVerify {
+			ok2, _, err = logic.CheckSOCKS5TLS(rctx, current, target, dialTimeout)
+		} else {
+			ok2, _, err = logic.CheckSOCKS5TCP(rctx, current, target, dialTimeout)
+		}
 		latency := time.Since(start).Milliseconds()
 		if err != nil {
 			if mode == "fixed" {
@@ -299,16 +329,19 @@ func main() {
 			} else {
 				autoManager.ReportFailure(current, 1)
 			}
-			c.JSON(http.StatusOK, gin.H{"valid": false, "latency": latency, "type": logic.ProxyTypeSOCKS5, "proxy": current.String(), "target": target, "error": err.Error()})
+			c.JSON(http.StatusOK, gin.H{"valid": false, "latency": latency, "type": logic.ProxyTypeSOCKS5, "proxy": current.String(), "target": target, "tls_verify": tlsVerify, "error": err.Error()})
 			return
 		}
-		_ = conn.Close()
+		if !ok2 {
+			c.JSON(http.StatusOK, gin.H{"valid": false, "latency": latency, "type": logic.ProxyTypeSOCKS5, "proxy": current.String(), "target": target, "tls_verify": tlsVerify, "error": "check failed"})
+			return
+		}
 		if mode == "fixed" {
 			fixedManager.ReportSuccess(current)
 		} else {
 			autoManager.ReportSuccess(current)
 		}
-		c.JSON(http.StatusOK, gin.H{"valid": true, "latency": latency, "type": logic.ProxyTypeSOCKS5, "proxy": current.String(), "target": target})
+		c.JSON(http.StatusOK, gin.H{"valid": true, "latency": latency, "type": logic.ProxyTypeSOCKS5, "proxy": current.String(), "target": target, "tls_verify": tlsVerify})
 	})
 	api.GET("/pool", func(c *gin.Context) {
 		mode := c.Query("mode")

@@ -64,7 +64,7 @@
         <div class="actions">
           <input id="checkTarget" placeholder="验证目标（例如 example.com:443）" />
           <button id="check">验证当前节点</button>
-          <span class="muted small">验证方式：通过当前 SOCKS5 节点建立 TCP 连接。</span>
+          <span class="muted small">验证方式：TCP 连通；当目标端口为 443 时会额外做 TLS 证书校验（可识别部分 MITM/劫持代理）。</span>
         </div>
       </div>
 

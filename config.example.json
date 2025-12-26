@@ -8,6 +8,7 @@
   "validation": {
     "enabled": true,
     "socks5_test_addr": "example.com:443",
+    "socks5_tls_verify": true,
     "max_socks5": 200,
     "concurrency": 64
   },
